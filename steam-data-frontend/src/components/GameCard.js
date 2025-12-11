@@ -1,28 +1,46 @@
-// app/components/GameCard.js (AGGIORNATO)
+// app/components/GameCard.js (VERSIONE CORRETTA E MODERNA)
 import Image from 'next/image';
+
+// Funzione per formattare l'URL per CheapShark/Steam
+const getDealLink = (dealID) => {
+  return `https://www.cheapshark.com/redirect?dealID=${dealID}`;
+}
 
 export default function GameCard({ deal }) {
   const originalPrice = parseFloat(deal.normalPrice);
   const salePrice = parseFloat(deal.salePrice);
   const discount = Math.round(parseFloat(deal.savings));
   const isFree = originalPrice === 0 || deal.salePrice === '0.00';
+  
+  // Ottieni il rating Metacritic (se disponibile, altrimenti usa 0)
+  const metacriticScore = parseInt(deal.metacriticScore) || 0;
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl overflow-hidden hover:shadow-blue-500/50 transition duration-300 transform hover:-translate-y-1">
+      
+      {/* Visualizzazione Rating Metacritic solo se > 0 */}
+      {metacriticScore > 0 && (
+          <div className={`text-center font-bold p-1 text-white text-sm 
+              ${metacriticScore >= 80 ? 'bg-green-600' : 
+                metacriticScore >= 60 ? 'bg-yellow-600' : 'bg-gray-600'}`}>
+            Metacritic: {metacriticScore}
+          </div>
+      )}
+
       <div className="relative h-40 w-full">
-        {/* L'API CheapShark fornisce un URL dell'immagine (thumb) */}
+        {/* Immagine con le prop width/height per prevenire Layout Shift (come da fix precedente) */}
         <Image 
-          src={deal.thumb} 
+          src={deal.thumb} // 👈 USA 'deal'
           alt={`${deal.title} cover`} 
-          width={280} // Imposta larghezza e altezza per l'Image Component di Next.js
-          height={160}
-          objectFit="cover" 
-          className="transition duration-500 ease-in-out hover:scale-105"
+          width={400} 
+          height={225}
+          className="object-cover w-full h-full transition duration-500 ease-in-out hover:scale-105"
         />
       </div>
 
       <div className="p-4">
         <h3 className="text-lg font-semibold truncate text-white mb-2">{deal.title}</h3>
+        {/* ... (resto del contenuto) ... */}
 
         <div className="flex justify-between items-end">
           {/* Rating del Deal (da CheapShark) */}
@@ -50,14 +68,15 @@ export default function GameCard({ deal }) {
             )}
           </div>
         </div>
+        
         {/* Link per vedere l'offerta su CheapShark/Steam */}
         <a 
-          href={`https://www.cheapshark.com/redirect?dealID=${deal.dealID}`}
+          href={getDealLink(deal.dealID)}
           target="_blank"
           rel="noopener noreferrer"
           className='block mt-4 text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded transition duration-150'
         >
-          Vedi Offerta su Steam
+          Vedi Offerta
         </a>
       </div>
     </div>

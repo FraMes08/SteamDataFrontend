@@ -1,4 +1,3 @@
-// app/components/ReleaseCard.js
 import Image from 'next/image';
 
 const formatDate = (timestamp) => {
@@ -27,14 +26,16 @@ export default function ReleaseCard({ game }) {
       
       {/* Immagine */}
       <div className="relative w-24 h-16 flex-shrink-0 rounded overflow-hidden">
-        <Image 
-          src={game.thumb} 
-          alt={`${game.title} cover`} 
-          width={96}
-          height={64}
-          objectFit="cover" 
-        />
-      </div>
+    <Image 
+      src={game.thumb} 
+      alt={`${game.title} cover`} 
+      // 💡 FIX: Metti width e height qui per il rapporto
+      width={96}
+      height={64}
+      // 💡 FIX: Usa className per impostare la copertura
+      className="object-cover w-full h-full" 
+    />
+</div>
 
       {/* Dettagli */}
       <div className="flex-grow">
