@@ -112,3 +112,36 @@ export async function fetchGamesByTag(tagSearch, limit = 40) {
     throw new Error(`Si è verificato un problema nel caricamento dei giochi per ${tagSearch}.`);
   }
 }
+
+/**
+ * Cerca un'offerta specifica su CheapShark dato il titolo esatto del gioco.
+ * Usata per arricchire i dati di RAWG.
+ */
+export async function getCheapSharkDeal(title) {
+  // Rimuovi caratteri speciali che potrebbero confondere la ricerca
+  const safeTitle = title.replace(/[^\w\s]/gi, '');
+  
+  const params = new URLSearchParams({
+    storeID: '1', // Steam
+    title: safeTitle,
+    pageSize: '1', // Ne vogliamo solo 1 (il "best match")
+    exact: '0' // Non esatto perché i titoli potrebbero differire leggermente
+  });
+
+  try {
+    const response = await fetch(`${CHEAPSHARK_API_URL}?${params.toString()}`, {
+        next: { revalidate: 3600 }
+    });
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    if (data && data.length > 0) {
+        return data[0]; // Restituisci la prima offerta trovata
+    }
+    return null;
+  } catch (e) {
+      console.warn(`Fallito il recupero prezzi per ${title}`, e.message);
+      return null;
+  }
+}

@@ -22,6 +22,10 @@ const nextConfig = {
                 protocol: 'https',
                 hostname: 'assets.cheapshark.com', 
             },
+            {
+                protocol: 'https',
+                hostname: 'media.rawg.io', // 💡 Aggiunto per RAWG
+            },
         ],
     },
 };

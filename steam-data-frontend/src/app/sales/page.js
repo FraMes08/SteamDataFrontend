@@ -1,7 +1,8 @@
-// app/sales/page.js (AGGIORNATO)
+// app/sales/page.js
 import { fetchSalesDataFromAPI } from '@/lib/deals-api'; 
+import { enrichDealsWithRawg } from '@/lib/rawg-api'; // 💡 Import
 import GameCard from '../../components/GameCard';
-import Header from '../../components/Header'; // Assicurati di importare l'Header
+import Header from '../../components/Header'; 
 
 // Server Component Async
 export default async function SalesPage() {
@@ -10,7 +11,9 @@ export default async function SalesPage() {
 
   try {
     // Carica i dati prima del rendering (ottieni le prime 40 offerte)
-    salesDeals = await fetchSalesDataFromAPI(40);
+    const rawDeals = await fetchSalesDataFromAPI(40);
+    // 💡 Arricchisci con dati RAWG (Immagini HQ, Tags, Date)
+    salesDeals = await enrichDealsWithRawg(rawDeals);
   } catch (err) {
     // L'errore viene gestito qui
     error = err.message || "Si è verificato un errore sconosciuto durante il caricamento delle offerte.";

@@ -2,7 +2,7 @@ import Header from '../components/Header';
 import MainContent from '../components/MainContent'; // Componente placeholder per il contenuto principale
 
 // La tua API Key (è meglio gestirla tramite variabili d'ambiente in un progetto reale!)
-const STEAM_API_KEY = 'CB695349A8A7F54F4F940A31431AEAD4';
+const STEAM_API_KEY = process.env.RAWG_API_KEY;
 
 export default function HomePage() {
   // Nota: Per un'applicazione Next.js moderna, i dati verranno probabilmente
