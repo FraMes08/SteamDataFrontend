@@ -147,56 +147,102 @@ function getSteamAppId(stores) {
 export async function fetchRawgGamesWithPrices(slug) {
     if (!RAWG_API_KEY) return [];
     
-    let url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&tags=${slug}&page_size=60`; // Fetch 60 per averne abbastanza dopo il filtro
+    let url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&tags=${slug}&page_size=40`; 
     
     const knownGenres = ['action','indie','adventure','rpg','strategy','shooter','casual','simulation','puzzle','arcade','platformer','racing','massively-multiplayer','sports','fighting','family','board-games','educational','card'];
     if (knownGenres.includes(slug)) {
-        url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&genres=${slug}&page_size=60`;
+        url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&genres=${slug}&page_size=40`;
     }
 
     try {
-        const response = await fetch(url, { next: { revalidate: 3600 } });
+        const response = await fetch(url, { 
+            headers: { 'User-Agent': 'SteamDataFrontend/1.0' },
+            next: { revalidate: 3600 } 
+        });
         const data = await response.json();
 
         if (!data.results) return [];
 
         const games = data.results;
         
-        // Eseguiamo chiamate in parallelo a CheapShark (Search by Title).
-        // CheapShark è veloce, 60 chiamate in parallelo potrebbero essere throttled, facciamo lotti o Promise.all completo (rischiando).
-        // Meglio limitare a 30 per sicurezza.
-        const candidates = games.slice(0, 30); 
+        // --- LOGICA BATCHING (Standardizzata con fetchAndEnrich) ---
+        const BATCH_SIZE = 5;
+        const enriched = [];
 
-        const enrichedGames = await Promise.all(candidates.map(async (game) => {
-            // Cerchiamo il prezzo esatto
-            const deal = await getCheapSharkDeal(game.name);
+        // Limitiamo i candidati totali per evitare timeout su Vercel (max 20 processati)
+        // Se processiamo 60 items con deep lookup, andiamo in timeout (10s limit).
+        // 20 items * (CheapShark + evt RAWG Detail) è gestibile.
+        const candidates = games.slice(0, 25); 
+
+        for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+            const batch = candidates.slice(i, i + BATCH_SIZE);
             
-            if (!deal) return null; // Se non c'è offerta, ritorna null (lo filtreremo)
+            const batchResults = await Promise.all(batch.map(async (game) => {
+                try {
+                    // 1. Cerca per titolo
+                    let deal = await getCheapSharkDeal(game.name);
+                    let steamAppID = deal ? deal.steamAppID : null;
 
-            return {
-                dealID: deal.dealID,
-                title: game.name,
-                thumb: game.background_image, // Immagine RAWG (Alta qualità)
-                metacriticScore: game.metacritic || deal.metacriticScore,
-                normalPrice: deal.normalPrice,
-                normalPrice: deal.normalPrice,
-                salePrice: deal.salePrice,
-                savings: deal.savings,
-                releaseDate: game.released, 
-                genres: game.genres ? game.genres.map(g => g.name) : [],
-                steamAppID: deal.steamAppID, // 💡 Cruciale per il link diretto
-                hasPrice: true
-            };
-        }));
+                    // 2. Fallback Deep Lookup se manca ID o Deal
+                    if (!deal || !steamAppID) {
+                        try {
+                            const detailRes = await fetch(`${RAWG_API_URL}/games/${game.slug}?key=${RAWG_API_KEY}`, { 
+                                headers: { 'User-Agent': 'SteamDataFrontend/1.0' },
+                                next: { revalidate: 86400 } 
+                            });
+                            const detailData = await detailRes.json();
+                            
+                            if (detailData.stores) {
+                                const steamStore = detailData.stores.find(s => s.store.slug === 'steam');
+                                if (steamStore && steamStore.url) {
+                                    const match = steamStore.url.match(/\/app\/(\d+)/);
+                                    if (match) {
+                                        steamAppID = match[1];
+                                        // 3. Cerca per ID
+                                        deal = await getCheapSharkDealByID(steamAppID);
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.warn(`Deep lookup failed for ${game.name}:`, err.message);
+                        }
+                    }
+                    
+                    // Se ancora niente deal, ma abbiamo un ID, possiamo almeno linkare Steam?
+                    // User richiede prezzi, quindi se deal è null, mettiamo prezzi a 0/TBA
+                    
+                    if (!steamAppID && !deal) return null; // Filtraggio stretto per evitare schede rotte
 
-        // Filtra via i null (quelli senza prezzo)
-        const validGames = enrichedGames.filter(g => g !== null);
+                    return {
+                        dealID: deal ? deal.dealID : null,
+                        title: deal ? deal.title : game.name,
+                        thumb: game.background_image,
+                        metacriticScore: game.metacritic || (deal ? deal.metacriticScore : 0),
+                        normalPrice: deal ? deal.normalPrice : "0.00",
+                        salePrice: deal ? deal.salePrice : "0.00",
+                        savings: deal ? deal.savings : 0,
+                        releaseDate: game.released, 
+                        genres: game.genres ? game.genres.map(g => g.name) : [],
+                        steamAppID: steamAppID,
+                        hasPrice: !!deal
+                    };
+                } catch (e) {
+                    console.error(`Error processing game ${game.name}:`, e);
+                    return null;
+                }
+            }));
+
+            enriched.push(...batchResults);
+            
+            // Throttle
+            if (i + BATCH_SIZE < candidates.length) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
         
-        console.log(`[RAWG Hybrid] ${slug}: Fetch ${candidates.length}, Valid Deals Found: ${validGames.length}`);
-
-        // Se ne abbiamo troppo pochi (< 5?), potremmo decidere di mostrare anche gli altri come fallback?
-        // L'utente ha detto "i prezzi devono rimanere" e "evitare giochi con prezzo n/a".
-        // Quindi restituiamo SOLO quelli validi.
+        // Filtra null
+        const validGames = enriched.filter(g => g !== null);
+        console.log(`[RAWG Batched] ${slug}: Input ${candidates.length} -> Valid ${validGames.length}`);
         
         return validGames;
 

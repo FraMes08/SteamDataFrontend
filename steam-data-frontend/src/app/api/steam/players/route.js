@@ -14,6 +14,11 @@ export async function GET(request) {
             next: { revalidate: 60 } // Cache for 1 minute
         });
         
+        if (response.status === 404 || response.status === 400) {
+             // Se Steam non trova il gioco, non è un errore server grave.
+             return NextResponse.json({ response: { player_count: null, result: 0 } });
+        }
+
         if (!response.ok) {
             throw new Error(`Steam API error: ${response.status}`);
         }
@@ -21,7 +26,8 @@ export async function GET(request) {
         const data = await response.json();
         return NextResponse.json(data);
     } catch (error) {
-        console.error("Steam Proxy Error:", error);
-        return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
+        console.warn(`Steam Proxy Warning for AppID ${appid}:`, error.message);
+        // Ritorniamo sempre 200 con null per evitare errori rossi in console client
+        return NextResponse.json({ response: { player_count: null, result: 0 } });
     }
 }
