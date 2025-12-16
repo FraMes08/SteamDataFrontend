@@ -17,6 +17,4 @@ Come giocatore PC che vuole risparmiare e rimanere aggiornato, voglio una dashbo
 
 ## Wireframe
 
-Corrisponde al design approvato dal product owner:
-
 ![Wireframe Pagina](./steam-data-frontend/public/Wireframe.png)
