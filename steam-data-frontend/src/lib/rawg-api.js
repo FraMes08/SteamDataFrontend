@@ -172,7 +172,7 @@ export async function fetchRawgGamesWithPrices(slug) {
         // Limitiamo i candidati totali per evitare timeout su Vercel (max 20 processati)
         // Se processiamo 60 items con deep lookup, andiamo in timeout (10s limit).
         // 20 items * (CheapShark + evt RAWG Detail) è gestibile.
-        const candidates = games.slice(0, 25); 
+        const candidates = games.slice(0, 15); 
 
         for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
             const batch = candidates.slice(i, i + BATCH_SIZE);
@@ -343,51 +343,61 @@ export async function fetchRawgRecentReleases() {
 
         const games = data.results;
 
-        // Arricchimento Parallelo con Prezzi
-        const enriched = await Promise.all(games.map(async (game) => {
-            let deal = await getCheapSharkDeal(game.name); // 1. Tentativo per Titolo
-            let steamAppID = deal ? deal.steamAppID : null;
+        // Arricchimento con Batching per evitare 429 e Timeouts
+        const BATCH_SIZE = 5;
+        const enriched = [];
 
-            // 2. Fallback Deep Lookup: Se non abbiamo trovato deal o ID, chiediamo i dettagli a RAWG
-            if (!deal || !steamAppID) {
-                try {
-                    // Fetch Dettagli Gioco per trovare lo store URL
-                    const detailRes = await fetch(`${RAWG_API_URL}/games/${game.slug}?key=${RAWG_API_KEY}`, { next: { revalidate: 86400 } });
-                    const detailData = await detailRes.json();
-                    
-                    if (detailData.stores) {
-                         const steamStore = detailData.stores.find(s => s.store.slug === 'steam');
-                         if (steamStore && steamStore.url) {
-                             // Estrai ID dall'URL (es: .../app/12345/...)
-                             const match = steamStore.url.match(/\/app\/(\d+)/);
-                             if (match) {
-                                 steamAppID = match[1];
-                                 // 3. Ora che abbiamo l'ID, cerchiamo il prezzo su CheapShark per ID
-                                 deal = await getCheapSharkDealByID(steamAppID);
+        // Limitiamo anche qui per sicurezza su Vercel
+        const candidates = games.slice(0, 20); 
+
+        for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+            const batch = candidates.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(async (game) => {
+                let deal = await getCheapSharkDeal(game.name); 
+                let steamAppID = deal ? deal.steamAppID : null;
+
+                if (!deal || !steamAppID) {
+                    try {
+                        const detailRes = await fetch(`${RAWG_API_URL}/games/${game.slug}?key=${RAWG_API_KEY}`, { next: { revalidate: 86400 } });
+                        const detailData = await detailRes.json();
+                        
+                        if (detailData.stores) {
+                             const steamStore = detailData.stores.find(s => s.store.slug === 'steam');
+                             if (steamStore && steamStore.url) {
+                                 const match = steamStore.url.match(/\/app\/(\d+)/);
+                                 if (match) {
+                                     steamAppID = match[1];
+                                     deal = await getCheapSharkDealByID(steamAppID);
+                                 }
                              }
-                         }
+                        }
+                    } catch (err) {
+                        console.warn(`Deep lookup failed for ${game.name}`);
                     }
-                } catch (err) {
-                    console.warn(`Deep lookup failed for ${game.name}`);
                 }
-            }
 
-            return {
-                dealID: deal ? deal.dealID : null,
-                steamAppID: steamAppID, // ID solido (o null)
-                title: deal ? deal.title : game.name, // Preferiamo titolo ufficiale store se c'è
-                thumb: game.background_image,
-                releaseDate: game.released, 
-                genres: game.genres ? game.genres.map(g => g.name) : [],
-                normalPrice: deal ? deal.normalPrice : "0.00", 
-                salePrice: deal ? deal.salePrice : "0.00",
-                savings: deal ? deal.savings : 0,
-                metacriticScore: game.metacritic || (deal ? deal.metacriticScore : 0)
-            };
-        }));
+                return {
+                    dealID: deal ? deal.dealID : null,
+                    steamAppID: steamAppID,
+                    title: deal ? deal.title : game.name,
+                    thumb: game.background_image,
+                    releaseDate: game.released, 
+                    genres: game.genres ? game.genres.map(g => g.name) : [],
+                    normalPrice: deal ? deal.normalPrice : "0.00", 
+                    salePrice: deal ? deal.salePrice : "0.00",
+                    savings: deal ? deal.savings : 0,
+                    metacriticScore: game.metacritic || (deal ? deal.metacriticScore : 0)
+                };
+            }));
+
+            enriched.push(...batchResults);
+            
+            if (i + BATCH_SIZE < candidates.length) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
 
         // Filtra: mantieni solo se abbiamo un link Steam valido (steamAppID)
-        // L'utente vuole evitare giochi con link non funzionanti o TBA senza ID.
         return enriched.filter(g => g.steamAppID !== null && g.steamAppID !== undefined);
 
     } catch (e) {
