@@ -181,6 +181,7 @@ export async function fetchRawgGamesWithPrices(slug) {
                 savings: deal.savings,
                 releaseDate: game.released, 
                 genres: game.genres ? game.genres.map(g => g.name) : [],
+                steamAppID: deal.steamAppID, // 💡 Cruciale per il link diretto
                 hasPrice: true
             };
         }));

@@ -1,10 +1,7 @@
 // app/components/GameCard.js (VERSIONE AGGIORNATA)
 import Image from 'next/image';
 
-// Funzione per formattare l'URL per CheapShark/Steam
-const getDealLink = (dealID) => {
-  return `https://www.cheapshark.com/redirect?dealID=${dealID}`;
-}
+
 
 export default function GameCard({ deal }) {
   const originalPrice = parseFloat(deal.normalPrice);
@@ -98,14 +95,29 @@ export default function GameCard({ deal }) {
             )}
           </div>
         
-          <a 
-            href={getDealLink(deal.dealID)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className='block w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded transition duration-150'
-          >
-            Vedi Offerta su Steam
-          </a>
+          
+          {/* Calcolo Link Smart: Direct Steam > CheapShark Redirect > Search Fallback */}
+          {(() => {
+            let storeLink;
+            if (deal.steamAppID) {
+                storeLink = `https://store.steampowered.com/app/${deal.steamAppID}`;
+            } else if (deal.dealID) {
+                storeLink = `https://www.cheapshark.com/redirect?dealID=${deal.dealID}`;
+            } else {
+                storeLink = `https://store.steampowered.com/search/?term=${encodeURIComponent(deal.title)}`;
+            }
+
+            return (
+              <a 
+                href={storeLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className='block w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded transition duration-150'
+              >
+                Vedi Offerta su Steam
+              </a>
+            );
+          })()}
         </div>
       </div>
     </div>
