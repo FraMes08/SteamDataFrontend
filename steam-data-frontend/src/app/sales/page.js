@@ -27,7 +27,7 @@ export default async function SalesPage() {
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-4xl font-extrabold text-blue-400 mb-2">🔥 Offerte Live da Steam</h1>
         <p className="text-gray-400 mb-8">
-          Offerte attuali fornite tramite CheapShark (filtrate per Steam Store). Non ordinate per popolarità.
+          Tutte le offerte più recenti su steam!
         </p>
 
         {error ? (

@@ -26,6 +26,10 @@ const nextConfig = {
                 protocol: 'https',
                 hostname: 'media.rawg.io', // 💡 Aggiunto per RAWG
             },
+            {
+                protocol: 'https',
+                hostname: 'via.placeholder.com', // 💡 Aggiunto per fallback
+            },
         ],
     },
 };

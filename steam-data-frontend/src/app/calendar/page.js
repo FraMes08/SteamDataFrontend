@@ -1,72 +1,95 @@
 // app/calendar/page.js
 import { fetchCalendarData } from '@/lib/deals-api'; 
-import ReleaseCard from '../../components/ReleaseCard';
+import { fetchRawgRecentReleases } from '@/lib/rawg-api'; // 💡 Importato
+import HorizontalGameCard from '../../components/HorizontalGameCard'; 
 import Header from '../../components/Header'; 
 
 // Server Component Async
 export default async function CalendarPage() {
-  let releaseGames = [];
+  let upcomingReleases = [];
+  let recentReleases = [];
   let error = null;
 
   try {
-    // Carica i dati ordinati per data di rilascio
-    releaseGames = await fetchCalendarData(50);
+    // 1. Prossime Uscite (CheapShark va bene per il futuro)
+    const cheapSharkData = await fetchCalendarData(40);
+    const now = Date.now() / 1000;
+    
+    upcomingReleases = cheapSharkData
+        .filter(game => game.releaseDate && game.releaseDate > now)
+        .sort((a, b) => a.releaseDate - b.releaseDate)
+        .slice(0, 10);
+
+    // 2. Rilasci Recenti (Usa RAWG per precisione su "ultimi 30 giorni")
+    // La funzione fetchRawgRecentReleases è già ordinata per data decrescente.
+    // Viene recuperato un numero abbondante (40) per poi filtrare.
+    const rawRecent = await fetchRawgRecentReleases();
+
+    // 3. Bilanciamento Liste: Prendiamo la lunghezza minima tra le due per averle pari
+    const minLength = Math.min(upcomingReleases.length, rawRecent.length, 10); // Max 10 comunque
+
+    upcomingReleases = upcomingReleases.slice(0, minLength);
+    recentReleases = rawRecent.slice(0, minLength);
+
   } catch (err) {
     error = err.message || "Si è verificato un errore sconosciuto nel caricamento del calendario.";
   }
-  
-  // Filtriamo i risultati in due sezioni per chiarezza: Appena Usciti e Prossime Uscite
-  const now = Date.now() / 1000; // Tempo corrente in secondi
-  
-  const recentReleases = releaseGames
-    .filter(game => game.releaseDate && game.releaseDate <= now)
-    .slice(0, 15); // Mostra solo gli ultimi 15 rilasciati
-
-  const upcomingReleases = releaseGames
-    .filter(game => game.releaseDate && game.releaseDate > now)
-    .sort((a, b) => a.releaseDate - b.releaseDate); // Riordina in senso crescente per "Prossime Uscite"
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <Header /> 
       
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-extrabold text-blue-400 mb-2">🗓 Calendario Uscite Steam</h1>
-        <p className="text-gray-400 mb-8">
-          Monitora gli ultimi rilasci e le uscite future su Steam.
-        </p>
+        
+        {/* Intestazione Pagina (Stile Wireframe) */}
+        <div className="flex flex-col md:flex-row justify-between items-end mb-8 border-b border-gray-700 pb-4">
+            <div>
+                <h1 className="text-4xl font-extrabold text-blue-400">🗓 Calendario Uscite</h1>
+                <p className="text-gray-400 mt-2">Pianifica i tuoi acquisti su Steam.</p>
+            </div>
+        </div>
 
         {error ? (
           <div className="bg-red-900/50 border border-red-700 p-4 rounded-lg text-red-300">
             {error}
           </div>
         ) : (
-          <>
-            {/* Sezione Prossime Uscite */}
-            <h2 className="text-3xl font-bold text-white mt-10 mb-4 border-b border-gray-700 pb-2">🚀 Prossime Uscite ({upcomingReleases.length})</h2>
-            {upcomingReleases.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {upcomingReleases.map((game) => (
-                  // Usiamo il dealID come key univoca
-                  <ReleaseCard key={game.dealID} game={game} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-400">Nessuna uscita futura trovata al momento.</p>
-            )}
+          /* GRID LAYOUT: 2 Colonne su Desktop */
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            
+            {/* COLONNA 1: Prossime Uscite (Upcoming) */}
+            <div>
+                <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+                    🚀 Giochi in arrivo
+                </h2>
+                <div className="flex flex-col gap-4">
+                    {upcomingReleases.length > 0 ? (
+                        upcomingReleases.map((game) => (
+                            <HorizontalGameCard key={game.dealID} game={game} />
+                        ))
+                    ) : (
+                        <p className="text-gray-500 italic">Nessuna uscita futura trovata.</p>
+                    )}
+                </div>
+            </div>
 
-            {/* Sezione Rilasci Recenti */}
-            <h2 className="text-3xl font-bold text-white mt-10 mb-4 border-b border-gray-700 pb-2">✅ Rilasci Recenti ({recentReleases.length})</h2>
-            {recentReleases.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {recentReleases.map((game) => (
-                  <ReleaseCard key={game.dealID} game={game} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-400">Nessun rilascio recente trovato.</p>
-            )}
-          </>
+            {/* COLONNA 2: Rilasci Recenti (Recent) */}
+            <div>
+                <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+                    ✅ Nuovi giochi
+                </h2>
+                <div className="flex flex-col gap-4">
+                    {recentReleases.length > 0 ? (
+                        recentReleases.map((game) => (
+                            <HorizontalGameCard key={game.dealID} game={game} />
+                        ))
+                    ) : (
+                        <p className="text-gray-500 italic">Nessun rilascio recente trovato.</p>
+                    )}
+                </div>
+            </div>
+
+          </div>
         )}
       </div>
     </div>

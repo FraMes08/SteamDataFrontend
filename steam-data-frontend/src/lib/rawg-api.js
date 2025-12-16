@@ -261,3 +261,204 @@ export async function enrichDealsWithRawg(deals) {
 
     return [...enriched, ...rest];
 }
+
+/**
+ * Recupera i giochi rilasciati recentemente (ultimi 30 giorni) da RAWG
+ * e aggiunge i prezzi da CheapShark.
+ * Ordinati per data decrescente (dal più nuovo).
+ */
+export async function fetchRawgRecentReleases() {
+    if (!RAWG_API_KEY) return [];
+
+    // Calcolo date dinamiche: Oggi e 30 giorni fa
+    const today = new Date();
+    const priorDate = new Date();
+    priorDate.setDate(today.getDate() - 30);
+
+    const formatDate = (date) => date.toISOString().split('T')[0];
+    const datesInfo = `${formatDate(priorDate)},${formatDate(today)}`;
+
+    // ordering=-released assicura "dai più nuovi ai più vecchi"
+    const url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&dates=${datesInfo}&ordering=-released&page_size=40`;
+
+    try {
+        const response = await fetch(url, { next: { revalidate: 3600 } });
+        const data = await response.json();
+
+        if (!data.results) return [];
+
+        const games = data.results;
+
+        // Arricchimento Parallelo con Prezzi
+        const enriched = await Promise.all(games.map(async (game) => {
+            let deal = await getCheapSharkDeal(game.name); // 1. Tentativo per Titolo
+            let steamAppID = deal ? deal.steamAppID : null;
+
+            // 2. Fallback Deep Lookup: Se non abbiamo trovato deal o ID, chiediamo i dettagli a RAWG
+            if (!deal || !steamAppID) {
+                try {
+                    // Fetch Dettagli Gioco per trovare lo store URL
+                    const detailRes = await fetch(`${RAWG_API_URL}/games/${game.slug}?key=${RAWG_API_KEY}`, { next: { revalidate: 86400 } });
+                    const detailData = await detailRes.json();
+                    
+                    if (detailData.stores) {
+                         const steamStore = detailData.stores.find(s => s.store.slug === 'steam');
+                         if (steamStore && steamStore.url) {
+                             // Estrai ID dall'URL (es: .../app/12345/...)
+                             const match = steamStore.url.match(/\/app\/(\d+)/);
+                             if (match) {
+                                 steamAppID = match[1];
+                                 // 3. Ora che abbiamo l'ID, cerchiamo il prezzo su CheapShark per ID
+                                 deal = await getCheapSharkDealByID(steamAppID);
+                             }
+                         }
+                    }
+                } catch (err) {
+                    console.warn(`Deep lookup failed for ${game.name}`);
+                }
+            }
+
+            return {
+                dealID: deal ? deal.dealID : null,
+                steamAppID: steamAppID, // ID solido (o null)
+                title: deal ? deal.title : game.name, // Preferiamo titolo ufficiale store se c'è
+                thumb: game.background_image,
+                releaseDate: game.released, 
+                genres: game.genres ? game.genres.map(g => g.name) : [],
+                normalPrice: deal ? deal.normalPrice : "0.00", 
+                salePrice: deal ? deal.salePrice : "0.00",
+                savings: deal ? deal.savings : 0,
+                metacriticScore: game.metacritic || (deal ? deal.metacriticScore : 0)
+            };
+        }));
+
+        // Filtra: mantieni solo se abbiamo un link Steam valido (steamAppID)
+        // L'utente vuole evitare giochi con link non funzionanti o TBA senza ID.
+        return enriched.filter(g => g.steamAppID !== null && g.steamAppID !== undefined);
+
+    } catch (e) {
+        console.error("Errore fetchRawgRecentReleases", e);
+        return [];
+    }
+}
+
+/**
+ * Cerca deal su CheapShark tramite Steam App ID
+ */
+async function getCheapSharkDealByID(steamAppID) {
+    try {
+        const response = await fetch(`https://www.cheapshark.com/api/1.0/deals?storeID=1&steamAppID=${steamAppID}`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data && data.length > 0 ? data[0] : null;
+    } catch {
+        return null;
+    }
+}
+/**
+ * HOME PAGE: 1. Most Played (Giochi più giocati/aggiunti)
+ */
+/**
+ * HOME PAGE: 1. Most Played (Giochi più giocati/aggiunti)
+ */
+export async function fetchMostPlayed(limit = 10) {
+    if (!RAWG_API_KEY) return [];
+    // Fetchiamo di più (25) per compensare i filtri
+    const url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&ordering=-added&page_size=25`;
+    return await fetchAndEnrich(url, limit);
+}
+
+/**
+ * HOME PAGE: 2. Popular Releases (Uscite Popolari recenti)
+ */
+export async function fetchPopularNewReleases(limit = 10) {
+    if (!RAWG_API_KEY) return [];
+    const url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&dates=2024-01-01,2025-12-31&ordering=-added&page_size=25`;
+    return await fetchAndEnrich(url, limit);
+}
+
+/**
+ * HOME PAGE: 4. Trending (Giochi con rating alto recenti)
+ */
+export async function fetchTrending(limit = 10) {
+    if (!RAWG_API_KEY) return [];
+    const today = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(today.getMonth() - 6);
+    const dates = `${sixMonthsAgo.toISOString().split('T')[0]},${today.toISOString().split('T')[0]}`;
+    
+    // Fetch 25 per sicurezza
+    const url = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&dates=${dates}&ordering=-rating&page_size=25`;
+    return await fetchAndEnrich(url, limit);
+}
+
+/**
+ * Helper interno per fetch + enrichment comune
+ */
+async function fetchAndEnrich(url, limit = 10) {
+    try {
+        const response = await fetch(url, { next: { revalidate: 3600 } });
+        const data = await response.json();
+        if (!data.results) return [];
+
+        const games = data.results;
+        
+        // Arricchimento con throttled parallelism per evitare 429
+        // Eseguiamo a blocchi di 5 in parallelo
+        const BATCH_SIZE = 5;
+        const enriched = [];
+        
+        for (let i = 0; i < games.length; i += BATCH_SIZE) {
+            const batch = games.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(async (game) => {
+                let deal = await getCheapSharkDeal(game.name);
+                let steamAppID = deal ? deal.steamAppID : null;
+
+                if (!deal || !steamAppID) {
+                    try {
+                        const detailRes = await fetch(`${RAWG_API_URL}/games/${game.slug}?key=${RAWG_API_KEY}`, { next: { revalidate: 86400 } });
+                        const detailData = await detailRes.json();
+                        if (detailData.stores) {
+                            const steamStore = detailData.stores.find(s => s.store.slug === 'steam');
+                            if (steamStore && steamStore.url) {
+                                const match = steamStore.url.match(/\/app\/(\d+)/);
+                                if (match) {
+                                    steamAppID = match[1];
+                                    deal = await getCheapSharkDealByID(steamAppID);
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+
+                return {
+                    dealID: deal ? deal.dealID : null,
+                    steamAppID: steamAppID,
+                    title: deal ? deal.title : game.name,
+                    thumb: game.background_image,
+                    releaseDate: game.released,
+                    players: game.added, 
+                    normalPrice: deal ? deal.normalPrice : "0.00",
+                    salePrice: deal ? deal.salePrice : "0.00",
+                    savings: deal ? deal.savings : 0,
+                    metacriticScore: game.metacritic || (deal ? deal.metacriticScore : 0)
+                };
+            }));
+            
+            enriched.push(...batchResults);
+            
+            // Breve pausa tra i batch per essere gentili con l'API
+            if (i + BATCH_SIZE < games.length) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
+        
+        // Filtriamo e poi TAGLIAMO al limite esatto
+        const filtered = enriched.filter(g => g.steamAppID !== null && g.steamAppID !== undefined);
+        return filtered.slice(0, limit);
+
+    } catch (e) {
+        console.error("Errore fetchAndEnrich", e);
+        return [];
+    }
+}

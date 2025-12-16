@@ -42,7 +42,7 @@ export default async function TagFilterPage({ params }) {
           Giochi Tag: {tagName}
         </h1>
         <p className="text-gray-400 mb-8">
-          Top giochi popolari da RAWG (mostrando solo quelli con offerte attive/prezzi trovati).
+          Giochi {tagName} più popolari.
         </p>
 
         {error ? (
