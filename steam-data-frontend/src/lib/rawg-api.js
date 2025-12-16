@@ -25,6 +25,9 @@ async function fetchAllPages(endpointUrl, maxPages = 5) {
         
         try {
             const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'SteamDataFrontend/1.0'
+                },
                 next: { revalidate: 604800 } // Cache settimanale
             });
 

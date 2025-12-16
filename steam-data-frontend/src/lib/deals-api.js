@@ -27,6 +27,9 @@ export async function fetchSalesDataFromAPI(limit = 40, sortBy = 'dealrating') {
 
   try {
     const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'SteamDataFrontend/1.0'
+      },
       next: { revalidate: 3600 } 
     });
 
