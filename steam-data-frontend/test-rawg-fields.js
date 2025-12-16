@@ -1,4 +1,5 @@
-const RAWG_API_KEY = "1b4206f56a884d10a5d8250a23715285"; 
+
+const RAWG_API_KEY = process.env.RAWG_API_KEY || '1b4206f56a884d10a5d8250a23715285'; // Hardcoded fallback for test
 const RAWG_API_URL = "https://api.rawg.io/api";
 
 async function testFetch() {
@@ -6,14 +7,16 @@ async function testFetch() {
     console.log("Fetching:", url);
     const res = await fetch(url);
     const data = await res.json();
-    if (data.results && data.results.length > 0) {
-        const game = data.results[0];
-        console.log("Name:", game.name);
-        // Print all keys and some values
-        console.log("RELEASED:", game.released);
-        console.log("GENRES:", JSON.stringify(game.genres));
-        console.log("FULL KEYS:", Object.keys(game));
+    if(data.results && data.results.length > 0) {
+        console.log("Fields:", Object.keys(data.results[0]));
+        console.log("Stats:", {
+            added: data.results[0].added,
+            added_by_status: data.results[0].added_by_status,
+            playtime: data.results[0].playtime,
+            suggestions_count: data.results[0].suggestions_count,
+            ratings_count: data.results[0].ratings_count,
+            metacritic: data.results[0].metacritic
+        });
     }
 }
-
 testFetch();

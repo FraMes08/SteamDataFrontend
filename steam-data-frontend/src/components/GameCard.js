@@ -1,9 +1,12 @@
-// app/components/GameCard.js (VERSIONE AGGIORNATA)
+"use client";
+
 import Image from 'next/image';
+import { useState, useEffect } from 'react';
 
 
 
 export default function GameCard({ deal }) {
+  const [playerCount, setPlayerCount] = useState(null);
   const originalPrice = parseFloat(deal.normalPrice);
   const salePrice = parseFloat(deal.salePrice);
   const discount = Math.round(parseFloat(deal.savings));
@@ -12,6 +15,20 @@ export default function GameCard({ deal }) {
   
   // Rating Metacritic
   const metacriticScore = parseInt(deal.metacriticScore) || 0;
+  
+  // Fetch Real-Time Players
+  useEffect(() => {
+      if (deal.steamAppID) {
+          fetch(`/api/steam/players?appid=${deal.steamAppID}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.response && data.response.player_count !== undefined) {
+                    setPlayerCount(data.response.player_count);
+                }
+            })
+            .catch(err => console.error("Player count fetch failed", err));
+      }
+  }, [deal.steamAppID]);
   
   // Determina il colore del rating
   let ratingColor = "bg-gray-600"; // Default
@@ -28,6 +45,14 @@ export default function GameCard({ deal }) {
       {metacriticScore > 0 && (
           <div className={`absolute top-2 right-2 z-10 ${ratingColor} text-white font-bold px-2 py-1 rounded shadow-md text-sm`}>
               {metacriticScore}
+          </div>
+      )}
+
+      {/* Badge Players (Posizionato sopra l'immagine a sinistra) */}
+      {playerCount !== null && (
+          <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm text-blue-300 font-bold px-2 py-1 rounded shadow-md text-xs flex items-center border border-blue-500/30">
+              <div className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
+              {playerCount.toLocaleString()} Playing
           </div>
       )}
 
@@ -72,12 +97,7 @@ export default function GameCard({ deal }) {
                   <div className="bg-red-600 px-2 py-0.5 rounded text-xs font-bold text-white">
                     -{discount}%
                   </div>
-                  {/* Prezzi affiancati: Prezzo Scontato a sinistra del base (o viceversa? User: "non sopra il base, ma alla sua sinistra") 
-                      User quote: "se sono presenti offerte non vengano poste SOPRA il prezzo base, ma alla sua SINISTRA"
-                      Quindi: [Offerta] [Base] ? Di solito si legge [Base] -> [Offerta].
-                      Ma se dice "non sopra il base, ma alla sua sinistra", forse intende che l'offerta deve stare A SINISTRA del prezzo base.
-                      Quindi: [Offerta] [Base].
-                  */}
+                  {/* Prezzi affiancati */}
                   <div className="flex items-center gap-2">
                       <p className="text-xl font-bold text-green-400">
                         ${deal.salePrice}

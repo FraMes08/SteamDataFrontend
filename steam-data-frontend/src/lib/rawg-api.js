@@ -224,7 +224,10 @@ export async function enrichDealsWithRawg(deals) {
             // Usiamo searchParams per encode corretto
             const searchUrl = `${RAWG_API_URL}/games?key=${RAWG_API_KEY}&search=${encodeURIComponent(deal.title)}&page_size=1`;
             
-            const res = await fetch(searchUrl, { next: { revalidate: 3600 } });
+            const res = await fetch(searchUrl, {
+                headers: { 'User-Agent': 'SteamDataFrontend/1.0' },
+                next: { revalidate: 3600 } 
+            });
             const data = await res.json();
 
             if (data.results && data.results.length > 0) {
@@ -246,6 +249,7 @@ export async function enrichDealsWithRawg(deals) {
                     thumb: game.background_image || deal.thumb, 
                     genres: game.genres ? game.genres.map(g => g.name) : [],
                     releaseDate: game.released,
+                    playing: game.added_by_status ? game.added_by_status.playing : 0, // 💡 Players
                     metacriticScore: finalScore 
                 };
             }
@@ -442,6 +446,7 @@ async function fetchAndEnrich(url, limit = 10) {
                     thumb: game.background_image,
                     releaseDate: game.released,
                     players: game.added, 
+                    playing: game.added_by_status ? game.added_by_status.playing : 0, // 💡 Utenti attivi
                     normalPrice: deal ? deal.normalPrice : "0.00",
                     salePrice: deal ? deal.salePrice : "0.00",
                     savings: deal ? deal.savings : 0,
